@@ -7,7 +7,6 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// 🔹 ENV variables
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
@@ -17,103 +16,197 @@ admin.initializeApp({
 });
 const db = admin.database();
 
-// 🔹 Helper function
 function sendMessage(chatId, text) {
   fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text })
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" })
   }).catch(err => console.error("Telegram Send Error:", err));
 }
 
-// 🔹 Telegram Webhook
+const VALID_CATEGORIES = [
+  "FREE FIRE ( ID CODE )",
+  "FREE FIRE ( AIRDROP )",
+  "FREE FIRE ( WEEKLY & MONTHLY)",
+  "FREE FIRE ( LEVEL UP PASS )",
+  "FREE FIRE ( UNI PIN )",
+  "INDONESIAN SERVER"
+];
+
 app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
-  res.sendStatus(200); // ✅ Prevent timeout
+  res.sendStatus(200); // immediate response
 
   const message = req.body.message;
   if(!message || !message.text) return;
 
   const chatId = message.chat.id;
   const text = message.text.trim();
-  const cmd = text.split(" ")[0];
+  const [cmd, ...rest] = text.split(" ");
+  const param = rest.join(" ");
 
   try {
-    // ---------------- BOT COMMANDS ----------------
-
-    // ✅ Show all packages
-    if(cmd === "/packages"){
-      const snapshot = await db.ref("packages").once("value");
-      if(!snapshot.exists()) return sendMessage(chatId, "⚠ No packages found.");
-      
-      let msg = "📦 Available Packages:\n\n";
-      let i = 1;
-      snapshot.forEach(child => {
-        const pkg = child.val();
-        msg += `${i++}. ${pkg.name} - ৳${pkg.price} (${pkg.status || "Active"})\nID: ${child.key}\n\n`;
+    // 1️⃣ Show categories
+    if(cmd === "/categories") {
+      let msg = "*📂 Available Categories:*\n\n";
+      VALID_CATEGORIES.forEach((cat, i) => {
+        msg += `${i+1}. ${cat}\n`;
       });
       sendMessage(chatId, msg);
+      return;
     }
 
-    // ✅ Add package (Format: /addpackage Name|Price)
-    else if(cmd === "/addpackage"){
-      const parts = text.replace("/addpackage ","").split("|");
-      const name = parts[0];
-      const price = parseFloat(parts[1]);
+    // 2️⃣ Show packages of a category: /packages <CategoryName>
+    else if(cmd === "/packages") {
+      if(!param) {
+        sendMessage(chatId, "⚠ Usage: /packages <CategoryName>\nExample: /packages FREE FIRE ( ID CODE )");
+        return;
+      }
+      if(!VALID_CATEGORIES.includes(param)) {
+        sendMessage(chatId, "⚠ Invalid category! Use /categories to see valid categories.");
+        return;
+      }
 
-      if(!name || isNaN(price)) 
-        return sendMessage(chatId, "⚠ Format: /addpackage Name|Price");
+      const snapshot = await db.ref(`packages/${param}`).once("value");
+      if(!snapshot.exists()) {
+        sendMessage(chatId, `⚠ No packages found in *${param}*.`);
+        return;
+      }
 
-      const newPkgRef = db.ref("packages").push();
-      await newPkgRef.set({
-        name: name,
-        price: price,
+      let msg = `*📦 Packages in ${param}:*\n\n`;
+      snapshot.forEach(child => {
+        const pkg = child.val();
+        msg += `ID: \`${child.key}\`\nName: ${pkg.name}\nPrice: ৳${pkg.price}\nStatus: ${pkg.status || "Active"}\n\n`;
+      });
+      sendMessage(chatId, msg);
+      return;
+    }
+
+    // 3️⃣ Add package: /addpackage <Category>|<Name>|<Price>
+    else if(cmd === "/addpackage") {
+      const parts = param.split("|");
+      if(parts.length !== 3) {
+        sendMessage(chatId, "⚠ Usage: /addpackage Category|Name|Price\nExample: /addpackage FREE FIRE ( ID CODE )|100 Diamonds|100");
+        return;
+      }
+      const [cat, name, priceStr] = parts.map(s => s.trim());
+      if(!VALID_CATEGORIES.includes(cat)) {
+        sendMessage(chatId, "⚠ Invalid category! Use /categories to see valid categories.");
+        return;
+      }
+      const price = parseFloat(priceStr);
+      if(isNaN(price)) {
+        sendMessage(chatId, "⚠ Price must be a number.");
+        return;
+      }
+
+      const newRef = db.ref(`packages/${cat}`).push();
+      await newRef.set({
+        name,
+        price,
         status: "Active",
         createdAt: new Date().toISOString()
       });
 
-      sendMessage(chatId, `✅ Package Added: ${name} (৳${price})`);
+      sendMessage(chatId, `✅ Added package to *${cat}*:\n${name} - ৳${price}`);
+      return;
     }
 
-    // ✅ Edit package (Format: /editpackage ID|Name|Price)
-    else if(cmd === "/editpackage"){
-      const parts = text.replace("/editpackage ","").split("|");
-      const id = parts[0], name = parts[1], price = parseFloat(parts[2]);
+    // 4️⃣ Edit package: /editpackage <Category>|<PackageID>|<Name>|<Price>
+    else if(cmd === "/editpackage") {
+      const parts = param.split("|");
+      if(parts.length !== 4) {
+        sendMessage(chatId, "⚠ Usage: /editpackage Category|PackageID|Name|Price\nExample: /editpackage FREE FIRE ( ID CODE )|abc123|200 Diamonds|180");
+        return;
+      }
+      const [cat, id, name, priceStr] = parts.map(s => s.trim());
+      if(!VALID_CATEGORIES.includes(cat)) {
+        sendMessage(chatId, "⚠ Invalid category! Use /categories to see valid categories.");
+        return;
+      }
+      if(!id) {
+        sendMessage(chatId, "⚠ PackageID is required.");
+        return;
+      }
+      const price = parseFloat(priceStr);
+      if(isNaN(price)) {
+        sendMessage(chatId, "⚠ Price must be a number.");
+        return;
+      }
 
-      if(!id || !name || isNaN(price)) 
-        return sendMessage(chatId, "⚠ Format: /editpackage ID|Name|Price");
+      const pkgRef = db.ref(`packages/${cat}/${id}`);
+      const snapshot = await pkgRef.once("value");
+      if(!snapshot.exists()) {
+        sendMessage(chatId, "⚠ Package ID not found.");
+        return;
+      }
 
-      await db.ref("packages/"+id).update({
-        name: name,
-        price: price,
-        status: "Active",
+      await pkgRef.update({
+        name,
+        price,
         updatedAt: new Date().toISOString()
       });
 
-      sendMessage(chatId, `✅ Package Updated: ${name} (৳${price})`);
+      sendMessage(chatId, `✏️ Updated package *${name}* (৳${price}) in *${cat}*`);
+      return;
     }
 
-    // ✅ Delete package (Format: /deletepackage ID)
-    else if(cmd === "/deletepackage"){
-      const id = text.split(" ")[1];
-      if(!id) return sendMessage(chatId, "⚠ Format: /deletepackage ID");
+    // 5️⃣ Delete package: /deletepackage <Category>|<PackageID>
+    else if(cmd === "/deletepackage") {
+      const parts = param.split("|");
+      if(parts.length !== 2) {
+        sendMessage(chatId, "⚠ Usage: /deletepackage Category|PackageID\nExample: /deletepackage FREE FIRE ( ID CODE )|abc123");
+        return;
+      }
+      const [cat, id] = parts.map(s => s.trim());
+      if(!VALID_CATEGORIES.includes(cat)) {
+        sendMessage(chatId, "⚠ Invalid category! Use /categories to see valid categories.");
+        return;
+      }
+      if(!id) {
+        sendMessage(chatId, "⚠ PackageID is required.");
+        return;
+      }
 
-      await db.ref("packages/"+id).remove();
-      sendMessage(chatId, `❌ Package ${id} deleted`);
+      const pkgRef = db.ref(`packages/${cat}/${id}`);
+      const snapshot = await pkgRef.once("value");
+      if(!snapshot.exists()) {
+        sendMessage(chatId, "⚠ Package ID not found.");
+        return;
+      }
+
+      await pkgRef.remove();
+      sendMessage(chatId, `❌ Deleted package ID \`${id}\` from *${cat}*`);
+      return;
     }
 
-    // ✅ Unknown Command
+    // Other commands: fallback help
     else {
-      sendMessage(chatId, "🤖 Available Commands:\n/packages\n/addpackage Name|Price\n/editpackage ID|Name|Price\n/deletepackage ID");
+      const helpMsg = `🤖 Available Commands:
+  /categories
+  /packages <CategoryName>
+  /addpackage <Category>|<Name>|<Price>
+  /editpackage <Category>|<PackageID>|<Name>|<Price>
+  /deletepackage <Category>|<PackageID>
+  /ping
+  /registered
+  /orders
+  /complete <OrderID>
+  /fail <OrderID>`;
+      sendMessage(chatId, helpMsg);
     }
 
-  } catch(err){
-    console.error("Bot Command Error:", err);
-    sendMessage(chatId, "⚠ Internal Error Occurred");
+  } catch(err) {
+    console.error("Command Error:", err);
+    sendMessage(chatId, "⚠ Internal error occurred.");
   }
 });
 
-// Root Check
-app.get("/", (req,res)=>res.send("🚀 Telegram Bot with Live Package Manager Running"));
+// Root test endpoint
+app.get("/", (req, res) => {
+  res.send("🚀 Telegram Firebase Bot Running Successfully");
+});
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=>console.log(`Bot server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Bot server running on port ${PORT}`);
+});

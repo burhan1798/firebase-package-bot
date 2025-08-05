@@ -132,35 +132,27 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
 
   sendMessage(chatId, msg);
 } else if (cmd === "/addpackage") {
-  // Get full message text (multi-line)
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
-  
-  if (lines.length < 2) {
-    return sendMessage(chatId, "⚠ Usage:\n/addpackage <Category>\nName | Price\nName | Price ...");
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  if(lines.length < 2) {
+    return sendMessage(chatId, "⚠ Usage:\n/addpackage <Category>\nName|Price\nName|Price...");
   }
 
-  const category = lines[0].replace("/addpackage", "").trim();
-  if (!category) {
-    return sendMessage(chatId, "⚠ Please provide category after /addpackage");
-  }
+  const category = lines[0].replace("/addpackage","").trim();
+  const packages = lines.slice(1);
 
   let added = 0;
-  for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split("|").map(p => p.trim());
-    if (parts.length === 2) {
-      const name = parts[0];
-      const price = parseFloat(parts[1]);
-      await db.ref("packages/" + category).push({
-        name: name,
-        price: price,
-        status: "Active",
-        time: new Date().toLocaleString()
-      });
-      added++;
-    }
+  for (let line of packages) {
+    const parts = line.split("|").map(p => p.trim());
+    if(parts.length !== 2) continue; // skip invalid
+    const [name, price] = parts;
+
+    const newRef = db.ref("packages/"+category).push();
+    await newRef.set({ name, price, status: "Active" });
+    added++;
   }
 
-  sendMessage(chatId, `✅ ${added} packages added to "${category}"`);
+  sendMessage(chatId, `✅ Added ${added} packages to ${category}`);
+  return;
 }
        else if (cmd === "/editpackage") {
   const parts = text.replace("/editpackage","").trim().split("|").map(p=>p.trim());

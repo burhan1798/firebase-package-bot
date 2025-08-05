@@ -40,13 +40,12 @@ const helpMsg = `🤖 Available Commands:
   /addpackage <Category>|<Name>|<Price>
   /editpackage <Category>|<PackageID>|<Name>|<Price>
   /deletepackage <Category>|<PackageID>
+  /editpayment <Method>|<Number>|<Description>
   /ping
   /registered
   /orders
   /complete <OrderID>
-  /fail <OrderID>
-  /editpayment bKash|<NewNumber>|<NewDescription>
-  /editpayment Nagad|<NewNumber>|<NewDescription>`;
+  /fail <OrderID>`;
 
 // Telegram Webhook
 app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {

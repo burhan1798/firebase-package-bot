@@ -44,7 +44,9 @@ const helpMsg = `🤖 Available Commands:
   /registered
   /orders
   /complete <OrderID>
-  /fail <OrderID>`;
+  /fail <OrderID>
+  /editpayment bKash|<NewNumber>|<NewDescription>
+  /editpayment Nagad|<NewNumber>|<NewDescription>`;
 
 // Telegram Webhook
 app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
@@ -116,27 +118,20 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
       sendMessage(chatId, msg);
       return;
     } else if (cmd === "/packages") {
-      if (!param) {
-        sendMessage(chatId, "⚠ Please provide Category name\nUse /categories to see all.");
-        return;
-      }
-      if (!categories.includes(param)) {
-        sendMessage(chatId, "⚠ Invalid category. Use /categories to see valid categories.");
-        return;
-      }
-      const snapshot = await db.ref("packages/" + param).once("value");
-      if (!snapshot.exists()) {
-        sendMessage(chatId, "⚠ No packages found in this category.");
-        return;
-      }
-      let msg = `📦 Packages in ${param}:\n\n`;
-      snapshot.forEach((child) => {
-        const p = child.val();
-        msg += `ID: ${child.key}\nName: ${p.name}\nPrice: ৳${p.price}\n----------------\n`;
-      });
-      sendMessage(chatId, msg);
-      return;
-    } else if (cmd === "/addpackage") {
+  if (!param) return sendMessage(chatId, "⚠ Usage: /packages <CategoryName>");
+
+  const snapshot = await db.ref("packages/"+param).once("value");
+  if (!snapshot.exists()) return sendMessage(chatId, `⚠ No packages found in ${param}`);
+
+  let msg = `📦 Packages in ${param}:\n\n`;
+  let i = 1;
+  snapshot.forEach(child => {
+    const pkg = child.val();
+    msg += `${i++}️⃣ ${pkg.name} - ৳${pkg.price} (ID: ${child.key})\n`;
+  });
+
+  sendMessage(chatId, msg);
+} else if (cmd === "/addpackage") {
   // Get full message text (multi-line)
   const lines = text.split("\n").map(l => l.trim()).filter(l => l);
   
@@ -168,62 +163,46 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
   sendMessage(chatId, `✅ ${added} packages added to "${category}"`);
 }
        else if (cmd === "/editpackage") {
-      if (!param) {
-        sendMessage(chatId, "⚠ Please provide details:\n/editpackage <Category>|<PackageID>|<Name>|<Price>");
-        return;
-      }
-      const parts = param.split("|");
-      if (parts.length !== 4) {
-        sendMessage(chatId, "⚠ Invalid format.\nUse: /editpackage <Category>|<PackageID>|<Name>|<Price>");
-        return;
-      }
-      const [category, packageId, name, priceStr] = parts.map((s) => s.trim());
-      if (!categories.includes(category)) {
-        sendMessage(chatId, "⚠ Invalid category.");
-        return;
-      }
-      const price = Number(priceStr);
-      if (isNaN(price) || price < 0) {
-        sendMessage(chatId, "⚠ Invalid price.");
-        return;
-      }
-      const packageRef = db.ref(`packages/${category}/${packageId}`);
-      const snap = await packageRef.once("value");
-      if (!snap.exists()) {
-        sendMessage(chatId, "⚠ Package ID not found.");
-        return;
-      }
-      await packageRef.update({ name, price });
-      sendMessage(
-        chatId,
-        `✅ Edited package ${packageId} in ${category}:\n${name} - ৳${price}`
-      );
-      return;
-    } else if (cmd === "/deletepackage") {
-      if (!param) {
-        sendMessage(chatId, "⚠ Please provide details:\n/deletepackage <Category>|<PackageID>");
-        return;
-      }
-      const parts = param.split("|");
-      if (parts.length !== 2) {
-        sendMessage(chatId, "⚠ Invalid format.\nUse: /deletepackage <Category>|<PackageID>");
-        return;
-      }
-      const [category, packageId] = parts.map((s) => s.trim());
-      if (!categories.includes(category)) {
-        sendMessage(chatId, "⚠ Invalid category.");
-        return;
-      }
-      const packageRef = db.ref(`packages/${category}/${packageId}`);
-      const snap = await packageRef.once("value");
-      if (!snap.exists()) {
-        sendMessage(chatId, "⚠ Package ID not found.");
-        return;
-      }
-      await packageRef.remove();
-      sendMessage(chatId, `✅ Deleted package ${packageId} from ${category}`);
-      return;
-    }
+  const parts = text.replace("/editpackage","").trim().split("|").map(p=>p.trim());
+  if (parts.length !== 4) return sendMessage(chatId, "⚠ Usage: /editpackage <Category>|<PackageID>|<NewName>|<NewPrice>");
+
+  const [category, pkgId, newName, newPrice] = parts;
+  await db.ref(`packages/${category}/${pkgId}`).update({
+    name: newName,
+    price: parseFloat(newPrice)
+  });
+
+  sendMessage(chatId, `✅ Package ${pkgId} updated to "${newName} - ৳${newPrice}"`);
+} else if (cmd === "/deletepackage") {
+  const parts = text.replace("/deletepackage","").trim().split("|").map(p=>p.trim());
+  if (parts.length !== 2) return sendMessage(chatId, "⚠ Usage: /deletepackage <Category>|<PackageID>");
+
+  const [category, pkgId] = parts;
+  await db.ref(`packages/${category}/${pkgId}`).remove();
+
+  sendMessage(chatId, `🗑 Package ${pkgId} deleted from ${category}`);
+}
+else if (cmd === "/editpayment") {
+  const parts = text.replace("/editpayment","").trim().split("|").map(p=>p.trim());
+  if (parts.length < 3) return sendMessage(chatId, 
+    "⚠ Usage:\n/editpayment bKash|<NewNumber>|<NewDescription>\n/editpayment Nagad|<NewNumber>|<NewDescription>"
+  );
+
+  const [method, number, ...descParts] = parts;
+  const description = descParts.join(" ");
+
+  if (method !== "bKash" && method !== "Nagad") {
+    return sendMessage(chatId, "⚠ Only 'bKash' or 'Nagad' are allowed.");
+  }
+
+  await db.ref("paymentMethods/"+method).set({
+    number: number,
+    description: description,
+    updatedAt: new Date().toLocaleString()
+  });
+
+  sendMessage(chatId, `✅ ${method} updated!\nNumber: ${number}\nInstruction: ${description}`);
+}
 
     // Unknown command fallback
     sendMessage(chatId, helpMsg);

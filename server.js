@@ -137,33 +137,37 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
       sendMessage(chatId, msg);
       return;
     } else if (cmd === "/addpackage") {
-      if (!param) {
-        sendMessage(chatId, "⚠ Please provide details:\n/addpackage <Category>|<Name>|<Price>");
-        return;
-      }
-      const parts = param.split("|");
-      if (parts.length !== 3) {
-        sendMessage(chatId, "⚠ Invalid format.\nUse: /addpackage <Category>|<Name>|<Price>");
-        return;
-      }
-      const [category, name, priceStr] = parts.map((s) => s.trim());
-      if (!categories.includes(category)) {
-        sendMessage(chatId, "⚠ Invalid category.");
-        return;
-      }
-      const price = Number(priceStr);
-      if (isNaN(price) || price < 0) {
-        sendMessage(chatId, "⚠ Invalid price.");
-        return;
-      }
-      const newRef = db.ref("packages/" + category).push();
-      await newRef.set({ name, price });
-      sendMessage(
-        chatId,
-        `✅ Added package to ${category}:\n${name} - ৳${price}`
-      );
-      return;
-    } else if (cmd === "/editpackage") {
+  // Get full message text (multi-line)
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  
+  if (lines.length < 2) {
+    return sendMessage(chatId, "⚠ Usage:\n/addpackage <Category>\nName | Price\nName | Price ...");
+  }
+
+  const category = lines[0].replace("/addpackage", "").trim();
+  if (!category) {
+    return sendMessage(chatId, "⚠ Please provide category after /addpackage");
+  }
+
+  let added = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split("|").map(p => p.trim());
+    if (parts.length === 2) {
+      const name = parts[0];
+      const price = parseFloat(parts[1]);
+      await db.ref("packages/" + category).push({
+        name: name,
+        price: price,
+        status: "Active",
+        time: new Date().toLocaleString()
+      });
+      added++;
+    }
+  }
+
+  sendMessage(chatId, `✅ ${added} packages added to "${category}"`);
+}
+       else if (cmd === "/editpackage") {
       if (!param) {
         sendMessage(chatId, "⚠ Please provide details:\n/editpackage <Category>|<PackageID>|<Name>|<Price>");
         return;

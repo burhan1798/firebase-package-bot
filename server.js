@@ -116,15 +116,20 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
 
     // 8️⃣ Add Package
     else if (cmd === "/addpackage") {
-  if (!param) return sendMessage(chatId, "⚠ Usage:\n/addpackage <Category>|<Name>|<Price> OR\n/addpackage <Category>\\nName|Price");
+  const fullText = message.text.trim();
 
-  const lines = text.split("\n").slice(1); // skip first line
-  let firstLine = text.split("\n")[0].replace("/addpackage", "").trim();
+  // Multi-line split
+  const lines = fullText.split("\n");
 
-  // Single-line format: Category|Name|Price
-  if (lines.length === 0) {
+  // first line after command
+  const firstLine = lines[0].replace("/addpackage", "").trim();
+
+  // ✅ Single-line: /addpackage Category|Name|Price
+  if (lines.length === 1) {
     const parts = firstLine.split("|").map(p => p.trim());
-    if (parts.length < 3) return sendMessage(chatId, "⚠ Invalid format. Example:\n/addpackage FREE FIRE ( ID CODE )|25 Diamond|30");
+    if (parts.length < 3) return sendMessage(chatId,
+      "⚠ Invalid format. Example:\n/addpackage FREE FIRE ( ID CODE )|25 Diamond|30"
+    );
 
     const category = parts[0];
     const name = parts[1];
@@ -137,10 +142,12 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
     return;
   }
 
-  // Multi-line format: First line = category, next lines = Name|Price
+  // ✅ Bulk format: first line = category, rest lines = Name|Price
   const category = firstLine;
+  const packages = lines.slice(1);
   let addedCount = 0;
-  for (let line of lines) {
+
+  for (let line of packages) {
     const [name, priceStr] = line.split("|").map(p => p.trim());
     if (!name || !priceStr) continue;
 

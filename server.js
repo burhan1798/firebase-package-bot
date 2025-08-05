@@ -34,7 +34,8 @@ const categories = [
   "INDONESIAN SERVER",
 ];
 
-const helpMsg = `🤖 Available Commands:
+else {
+  sendMessage(chatId, `🤖 Available Commands:
   /categories
   /packages <CategoryName>
   /addpackage <Category>|<Name>|<Price>
@@ -45,7 +46,8 @@ const helpMsg = `🤖 Available Commands:
   /registered
   /orders
   /complete <OrderID>
-  /fail <OrderID>`;
+  /fail <OrderID>`);
+}
 
 // Telegram Webhook
 app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {

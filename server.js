@@ -116,16 +116,42 @@ app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
 
     // 8️⃣ Add Package
     else if (cmd === "/addpackage") {
-      const parts = argStr.split("|");
-      if (parts.length < 3) return sendMessage(chatId, "⚠ Usage: /addpackage <Category>|<Name>|<Price>");
-      const category = parts[0].trim();
-      const name = parts[1].trim();
-      const price = parseInt(parts[2].trim());
+  if (!param) return sendMessage(chatId, "⚠ Usage:\n/addpackage <Category>|<Name>|<Price> OR\n/addpackage <Category>\\nName|Price");
 
-      const newRef = db.ref("packages/" + category).push();
-      await newRef.set({ name, price });
-      sendMessage(chatId, `✅ Added package to ${category}:\n${name} - ৳${price}`);
-    }
+  const lines = text.split("\n").slice(1); // skip first line
+  let firstLine = text.split("\n")[0].replace("/addpackage", "").trim();
+
+  // Single-line format: Category|Name|Price
+  if (lines.length === 0) {
+    const parts = firstLine.split("|").map(p => p.trim());
+    if (parts.length < 3) return sendMessage(chatId, "⚠ Invalid format. Example:\n/addpackage FREE FIRE ( ID CODE )|25 Diamond|30");
+
+    const category = parts[0];
+    const name = parts[1];
+    const price = parseInt(parts[2]);
+
+    const newRef = db.ref("packages/" + category).push();
+    await newRef.set({ name, price });
+
+    sendMessage(chatId, `✅ Added package to ${category}:\n${name} - ৳${price}`);
+    return;
+  }
+
+  // Multi-line format: First line = category, next lines = Name|Price
+  const category = firstLine;
+  let addedCount = 0;
+  for (let line of lines) {
+    const [name, priceStr] = line.split("|").map(p => p.trim());
+    if (!name || !priceStr) continue;
+
+    const price = parseInt(priceStr);
+    await db.ref("packages/" + category).push({ name, price });
+    addedCount++;
+  }
+
+  sendMessage(chatId, `✅ Bulk add completed!\nCategory: ${category}\nAdded: ${addedCount} packages`);
+  return;
+}
 
     // 9️⃣ Edit Package
     else if (cmd === "/editpackage") {
